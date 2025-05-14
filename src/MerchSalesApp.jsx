@@ -62,7 +62,8 @@ export default function MerchSalesApp() {
       });
     });
     const csvContent = rows.join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.setAttribute("download", "sales-history.csv");
