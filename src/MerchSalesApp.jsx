@@ -16,7 +16,7 @@ const initialInventory = {
   "Small Bag Blue": { price: 55, quantity: 10 },
   "Small Bag Yellow": { price: 55, quantity: 10 },
   "CD 涉吼": { price: 185, quantity: 10 },
-  "CD 樱座": { price: 185, quantity: 10 }
+  "CD 樱座": { price: 185, quantity: 10 },
 };
 
 export default function MerchSalesApp() {
@@ -34,12 +34,11 @@ export default function MerchSalesApp() {
     }));
   };
 
-  const calculateTotal = () => {
-    return Object.entries(cart).reduce(
+  const calculateTotal = () =>
+    Object.entries(cart).reduce(
       (sum, [item, qty]) => sum + inventory[item].price * qty,
       0
     );
-  };
 
   const handleCompleteSale = () => {
     const newInventory = { ...inventory };
@@ -49,7 +48,10 @@ export default function MerchSalesApp() {
       saleRecord.push({ item, qty, price: inventory[item].price });
     }
     setInventory(newInventory);
-    setSalesHistory((prev) => [...prev, { sale: saleRecord, total: calculateTotal(), timestamp: new Date().toISOString() }]);
+    setSalesHistory((prev) => [
+      ...prev,
+      { sale: saleRecord, total: calculateTotal(), timestamp: new Date().toISOString() },
+    ]);
     setCart({});
     alert("Sale completed!");
   };
@@ -63,7 +65,7 @@ export default function MerchSalesApp() {
     });
     const csvContent = rows.join("\n");
     const BOM = '\uFEFF';
-  const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.setAttribute("download", "sales-history.csv");
@@ -73,23 +75,13 @@ export default function MerchSalesApp() {
   };
 
   const handleUpdateItem = (item, field, value) => {
-    if (field === "quantity") {
-      setInventory((prev) => ({
-        ...prev,
-        [item]: {
-          ...prev[item],
-          quantity: Number(value),
-        },
-      }));
-    } else {
-      setInventory((prev) => ({
-        ...prev,
-        [item]: {
-          ...prev[item],
-          [field]: field === "price" ? Number(value) : value,
-        },
-      }));
-    }
+    setInventory((prev) => ({
+      ...prev,
+      [item]: {
+        ...prev[item],
+        [field]: field === "price" || field === "quantity" ? Number(value) : value,
+      },
+    }));
   };
 
   const handleAddNewItem = () => {
@@ -119,6 +111,7 @@ export default function MerchSalesApp() {
           <Card key={item}>
             <CardContent className="p-2 space-y-1 text-sm">
               <div className="font-semibold truncate">{item}</div>
+
               <div className="flex flex-col gap-1">
                 <Label>Price:</Label>
                 <Input
@@ -127,6 +120,7 @@ export default function MerchSalesApp() {
                   onChange={(e) => handleUpdateItem(item, "price", e.target.value)}
                 />
               </div>
+
               <div className="flex flex-col gap-1">
                 <Label>Available:</Label>
                 <div className="flex gap-2 items-center">
@@ -143,16 +137,25 @@ export default function MerchSalesApp() {
                   </Button>
                 </div>
               </div>
+
               <div className="flex flex-col gap-1">
                 <Input
                   type="number"
                   placeholder="Qty"
                   min="0"
                   max={quantity}
-                  value={cart[item] || ""}
+                  value={cart[item] === 0 ? "0" : cart[item] || ""}
                   onChange={(e) => {
                     const qty = parseInt(e.target.value, 10);
-                    handleAddToCart(item, qty);
+                    if (!isNaN(qty) && qty > 0) {
+                      setCart((prev) => ({ ...prev, [item]: qty }));
+                    } else {
+                      setCart((prev) => {
+                        const newCart = { ...prev };
+                        delete newCart[item];
+                        return newCart;
+                      });
+                    }
                   }}
                 />
               </div>
