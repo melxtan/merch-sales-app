@@ -10,13 +10,13 @@ const initialInventory = {
   "T-Shirt L": { price: 165, quantity: 10 },
   "T-Shirt XL": { price: 165, quantity: 10 },
   "T-Shirt XXL": { price: 165, quantity: 10 },
-  "Tote Bag Black": { price: 80, quantity: 10 },
-  "Tote Bag Green": { price: 80, quantity: 10 },
-  "Small Bag Green": { price: 60, quantity: 10 },
-  "Small Bag Blue": { price: 60, quantity: 10 },
-  "Small Bag Yellow": { price: 60, quantity: 10 },
-  "CD 涉吼": { price: 100, quantity: 10 },
-  "CD 樱座": { price: 100, quantity: 10 }
+  "Tote Bag Black": { price: 115, quantity: 10 },
+  "Tote Bag Green": { price: 115, quantity: 10 },
+  "Small Bag Green": { price: 55, quantity: 10 },
+  "Small Bag Blue": { price: 55, quantity: 10 },
+  "Small Bag Yellow": { price: 55, quantity: 10 },
+  "CD 涉吼": { price: 185, quantity: 10 },
+  "CD 樱座": { price: 185, quantity: 10 }
 };
 
 export default function MerchSalesApp() {
