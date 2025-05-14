@@ -27,7 +27,7 @@ export default function MerchSalesApp() {
   const [editableQuantities, setEditableQuantities] = useState({});
 
   const handleAddToCart = (item, qty) => {
-    if (!qty || qty <= 0) return;
+    if (!qty || qty < 0) return;
     setCart((prev) => ({
       ...prev,
       [item]: qty,
