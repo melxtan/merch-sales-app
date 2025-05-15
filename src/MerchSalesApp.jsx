@@ -10,13 +10,13 @@ const initialInventory = {
   "T-Shirt L": { price: 165, quantity: 10 },
   "T-Shirt XL": { price: 165, quantity: 10 },
   "T-Shirt XXL": { price: 165, quantity: 10 },
-  "Tote Bag Black": { price: 115, quantity: 10 },
-  "Tote Bag Green": { price: 115, quantity: 10 },
-  "Small Bag Green": { price: 55, quantity: 10 },
-  "Small Bag Blue": { price: 55, quantity: 10 },
-  "Small Bag Yellow": { price: 55, quantity: 10 },
-  "CD 涉吼": { price: 185, quantity: 10 },
-  "CD 樱座": { price: 185, quantity: 10 },
+  "Tote Bag Black": { price: 80, quantity: 10 },
+  "Tote Bag Green": { price: 80, quantity: 10 },
+  "Small Bag Green": { price: 60, quantity: 10 },
+  "Small Bag Blue": { price: 60, quantity: 10 },
+  "Small Bag Yellow": { price: 60, quantity: 10 },
+  "CD 涉吼": { price: 100, quantity: 10 },
+  "CD 樱座": { price: 100, quantity: 10 }
 };
 
 export default function MerchSalesApp() {
@@ -27,30 +27,38 @@ export default function MerchSalesApp() {
   const [editableQuantities, setEditableQuantities] = useState({});
 
   const handleAddToCart = (item, qty) => {
-    if (!qty || qty < 0) return;
-    setCart((prev) => ({
-      ...prev,
-      [item]: qty,
-    }));
+    if (qty === "" || (typeof qty === "number" && qty >= 0)) {
+      setCart((prev) => ({
+        ...prev,
+        [item]: qty === "" ? undefined : qty,
+      }));
+    }
   };
 
-  const calculateTotal = () =>
-    Object.entries(cart).reduce(
+  const calculateTotal = () => {
+    return Object.entries(cart).reduce(
       (sum, [item, qty]) => sum + inventory[item].price * qty,
       0
     );
+  };
 
   const handleCompleteSale = () => {
     const newInventory = { ...inventory };
     const saleRecord = [];
+
     for (const [item, qty] of Object.entries(cart)) {
       newInventory[item].quantity -= qty;
       saleRecord.push({ item, qty, price: inventory[item].price });
     }
+
     setInventory(newInventory);
     setSalesHistory((prev) => [
       ...prev,
-      { sale: saleRecord, total: calculateTotal(), timestamp: new Date().toISOString() },
+      {
+        sale: saleRecord,
+        total: calculateTotal(),
+        timestamp: new Date().toISOString(),
+      },
     ]);
     setCart({});
     alert("Sale completed!");
@@ -64,8 +72,7 @@ export default function MerchSalesApp() {
       });
     });
     const csvContent = rows.join("\n");
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.setAttribute("download", "sales-history.csv");
@@ -75,27 +82,64 @@ export default function MerchSalesApp() {
   };
 
   const handleUpdateItem = (item, field, value) => {
-    setInventory((prev) => ({
-      ...prev,
-      [item]: {
-        ...prev[item],
-        [field]: field === "price" || field === "quantity" ? Number(value) : value,
-      },
-    }));
+    if (field === "quantity" && /^\d*$/.test(value)) {
+      setInventory((prev) => ({
+        ...prev,
+        [item]: {
+          ...prev[item],
+          quantity: Number(value),
+        },
+      }));
+    } else if (field === "price" && /^\d*\.?\d*$/.test(value)) {
+      setInventory((prev) => ({
+        ...prev,
+        [item]: {
+          ...prev[item],
+          price: Number(value),
+        },
+      }));
+    }
   };
 
   const handleAddNewItem = () => {
     const { name, price, quantity } = newItem;
     if (!name || !price || !quantity) return;
+
     setInventory((prev) => ({
       ...prev,
-      [name]: { price: Number(price), quantity: Number(quantity) },
+      [name]: {
+        price: Number(price),
+        quantity: Number(quantity),
+      },
     }));
+
     setNewItem({ name: "", price: "", quantity: "" });
   };
 
   const handleClearCart = () => setCart({});
-  const handleResetInventory = () => setInventory(initialInventory);
+
+  const handleRemoveItem = (item) => {
+    if (window.confirm(`Are you sure you want to delete "${item}"?`)) {
+      setInventory((prev) => {
+        const newInventory = { ...prev };
+        delete newInventory[item];
+        return newInventory;
+      });
+
+      setCart((prev) => {
+        const newCart = { ...prev };
+        delete newCart[item];
+        return newCart;
+      });
+
+      setEditableQuantities((prev) => {
+        const updated = { ...prev };
+        delete updated[item];
+        return updated;
+      });
+    }
+  };
+
   const toggleEditable = (item) => {
     setEditableQuantities((prev) => ({
       ...prev,
@@ -111,16 +155,16 @@ export default function MerchSalesApp() {
           <Card key={item}>
             <CardContent className="p-2 space-y-1 text-sm">
               <div className="font-semibold truncate">{item}</div>
-
               <div className="flex flex-col gap-1">
                 <Label>Price:</Label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="\d*"
                   value={price}
                   onChange={(e) => handleUpdateItem(item, "price", e.target.value)}
                 />
               </div>
-
               <div className="flex flex-col gap-1">
                 <Label>Available:</Label>
                 <div className="flex gap-2 items-center">
@@ -137,28 +181,31 @@ export default function MerchSalesApp() {
                   </Button>
                 </div>
               </div>
-
               <div className="flex flex-col gap-1">
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="Qty"
-                  min="0"
-                  max={quantity}
-                  value={cart[item] === 0 ? "0" : cart[item] || ""}
+                  value={cart[item] !== undefined ? cart[item] : ""}
                   onChange={(e) => {
-                    const qty = parseInt(e.target.value, 10);
-                    if (!isNaN(qty) && qty > 0) {
-                      setCart((prev) => ({ ...prev, [item]: qty }));
-                    } else {
-                      setCart((prev) => {
-                        const newCart = { ...prev };
-                        delete newCart[item];
-                        return newCart;
-                      });
+                    const val = e.target.value;
+                    if (val === "") {
+                      handleAddToCart(item, "");
+                      return;
+                    }
+                    if (/^\d+$/.test(val)) {
+                      handleAddToCart(item, parseInt(val, 10));
                     }
                   }}
                 />
               </div>
+              <Button
+                className="bg-red-500 text-white w-full mt-2"
+                onClick={() => handleRemoveItem(item)}
+              >
+                Delete Item
+              </Button>
             </CardContent>
           </Card>
         ))}
@@ -175,16 +222,30 @@ export default function MerchSalesApp() {
                 onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
               />
               <Input
-                type="number"
+                type="text"
+                inputMode="decimal"
+                pattern="\d*"
                 placeholder="Price"
                 value={newItem.price}
-                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setNewItem({ ...newItem, price: val });
+                  }
+                }}
               />
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 placeholder="Quantity"
                 value={newItem.quantity}
-                onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*$/.test(val)) {
+                    setNewItem({ ...newItem, quantity: val });
+                  }
+                }}
               />
             </div>
             <Button onClick={handleAddNewItem}>Add Item</Button>
@@ -214,7 +275,6 @@ export default function MerchSalesApp() {
               <Button onClick={handleExportCSV} disabled={salesHistory.length === 0}>
                 Export CSV
               </Button>
-              <Button onClick={handleResetInventory}>Reset Inventory</Button>
             </div>
           </CardContent>
         </Card>
