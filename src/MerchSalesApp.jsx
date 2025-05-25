@@ -1,66 +1,111 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Card, { CardContent } from "./components/ui/Card";
 import Button from "./components/ui/Button";
 import Input from "./components/ui/Input";
 import Label from "./components/ui/Label";
-
-const initialInventory = {
-  "T-Shirt S": { price: 165, quantity: 10 },
-  "T-Shirt M": { price: 165, quantity: 10 },
-  "T-Shirt L": { price: 165, quantity: 10 },
-  "T-Shirt XL": { price: 165, quantity: 10 },
-  "T-Shirt XXL": { price: 165, quantity: 10 },
-  "Tote Bag Black": { price: 80, quantity: 10 },
-  "Tote Bag Green": { price: 80, quantity: 10 },
-  "Small Bag Green": { price: 60, quantity: 10 },
-  "Small Bag Blue": { price: 60, quantity: 10 },
-  "Small Bag Yellow": { price: 60, quantity: 10 },
-  "CD 涉吼": { price: 100, quantity: 10 },
-  "CD 樱座": { price: 100, quantity: 10 }
-};
+import { supabase } from "./supabaseClient";
 
 export default function MerchSalesApp() {
-  const [inventory, setInventory] = useState(initialInventory);
+  const [inventory, setInventory] = useState(null);
   const [cart, setCart] = useState({});
   const [salesHistory, setSalesHistory] = useState([]);
   const [newItem, setNewItem] = useState({ name: "", price: "", quantity: "" });
   const [editableQuantities, setEditableQuantities] = useState({});
+  const [editedQuantities, setEditedQuantities] = useState({});
+
+  const fetchInventory = async () => {
+    const { data, error } = await supabase.from("inventory").select("*");
+    if (!error) {
+      const formatted = {};
+      data.forEach(({ item, price, quantity }) => {
+        formatted[item] = { price, quantity };
+      });
+      setInventory(formatted);
+    } else {
+      console.error("Error fetching inventory:", error);
+    }
+  };
+
+  const fetchSalesHistory = async () => {
+    const { data, error } = await supabase.from("sales_history").select("*").order("timestamp", { ascending: false });
+    if (!error) {
+      setSalesHistory(data);
+    } else {
+      console.error("Error fetching sales history:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+    fetchSalesHistory();
+  }, []);
+
+  const handleAddNewItem = async () => {
+    const { name, price, quantity } = newItem;
+    if (!name || !price || !quantity) return;
+
+    const { data, error } = await supabase.from("inventory").insert({
+      item: name,
+      price: Number(price),
+      quantity: Number(quantity)
+    });
+
+    if (error) {
+      console.error("Error inserting item:", error);
+      alert("Failed to add item. Check console.");
+    } else {
+      console.log("Item inserted:", data);
+      await fetchInventory();
+    }
+
+    setNewItem({ name: "", price: "", quantity: "" });
+  };
 
   const handleAddToCart = (item, qty) => {
-    if (!qty || qty <= 0) return;
-    setCart((prev) => ({
-      ...prev,
-      [item]: qty,
-    }));
+    if (qty === "" || (typeof qty === "number" && qty >= 0)) {
+      setCart((prev) => ({
+        ...prev,
+        [item]: qty === "" ? undefined : qty,
+      }));
+    }
   };
 
   const calculateTotal = () => {
-    return Object.entries(cart).reduce(
-      (sum, [item, qty]) => sum + inventory[item].price * qty,
-      0
-    );
+    return Object.entries(cart).reduce((sum, [item, qty]) => sum + inventory[item].price * qty, 0);
   };
 
-  const handleCompleteSale = () => {
-    const newInventory = { ...inventory };
+  const handleCompleteSale = async () => {
     const saleRecord = [];
     for (const [item, qty] of Object.entries(cart)) {
-      newInventory[item].quantity -= qty;
-      saleRecord.push({ item, qty, price: inventory[item].price });
+      const updatedQty = inventory[item].quantity - qty;
+      await supabase.from("inventory").update({ quantity: updatedQty }).eq("item", item);
+      saleRecord.push({ item, qty, price: inventory[item].price, total: inventory[item].price * qty });
     }
-    setInventory(newInventory);
-    setSalesHistory((prev) => [...prev, { sale: saleRecord, total: calculateTotal(), timestamp: new Date().toISOString() }]);
+
+    const timestamp = new Date().toISOString();
+    for (const record of saleRecord) {
+      await supabase.from("sales_history").insert({ ...record, timestamp });
+    }
+
+    await fetchInventory();
+    await fetchSalesHistory();
     setCart({});
     alert("Sale completed!");
   };
 
-  const handleExportCSV = () => {
-    const rows = ["Item,Quantity,Price,Total"];
-    salesHistory.forEach((record) => {
-      record.sale.forEach(({ item, qty, price }) => {
-        rows.push(`${item},${qty},${price},${qty * price}`);
-      });
+  const handleExportCSV = async () => {
+    const { data, error } = await supabase.from("sales_history").select("*").order("timestamp", { ascending: true });
+    if (error) {
+      console.error("Error exporting sales history:", error);
+      alert("Failed to export CSV. Check console.");
+      return;
+    }
+
+    const rows = ["Item,Quantity,Price,Total,Timestamp"];
+    data.forEach(({ item, qty, price, total, timestamp }) => {
+      rows.push(`${item},${qty},${price},${total},${timestamp}`);
     });
+
     const csvContent = rows.join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -71,44 +116,96 @@ export default function MerchSalesApp() {
     document.body.removeChild(link);
   };
 
-  const handleUpdateItem = (item, field, value) => {
-    if (field === "quantity") {
-      setInventory((prev) => ({
-        ...prev,
-        [item]: {
-          ...prev[item],
-          quantity: Number(value),
-        },
-      }));
+  const handleClearSalesHistory = async () => {
+    const confirmed = window.confirm("Are you sure you want to delete ALL sales history? This cannot be undone.");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("sales_history").delete().not("id", "is", null);
+    if (error) {
+      console.error("Failed to clear sales history:", error);
+      alert("Error clearing sales history. Check console.");
     } else {
-      setInventory((prev) => ({
-        ...prev,
-        [item]: {
-          ...prev[item],
-          [field]: field === "price" ? Number(value) : value,
-        },
-      }));
+      await fetchSalesHistory();
+      alert("Sales history cleared.");
     }
   };
 
-  const handleAddNewItem = () => {
-    const { name, price, quantity } = newItem;
-    if (!name || !price || !quantity) return;
-    setInventory((prev) => ({
-      ...prev,
-      [name]: { price: Number(price), quantity: Number(quantity) },
-    }));
-    setNewItem({ name: "", price: "", quantity: "" });
+  const handleUpdateItem = (item, field, value) => {
+    if ((field === "quantity" && /^\d*$/.test(value)) || (field === "price" && /^\d*\.?\d*$/.test(value))) {
+      const updatedValue = Number(value);
+      if (field === "quantity") {
+        setEditedQuantities((prev) => ({
+          ...prev,
+          [item]: updatedValue,
+        }));
+      } else {
+        setInventory((prev) => ({
+          ...prev,
+          [item]: {
+            ...prev[item],
+            [field]: updatedValue,
+          },
+        }));
+        supabase.from("inventory").update({ [field]: updatedValue }).eq("item", item);
+      }
+    }
   };
 
-  const handleClearCart = () => setCart({});
-  const handleResetInventory = () => setInventory(initialInventory);
-  const toggleEditable = (item) => {
+  const toggleEditable = async (item) => {
+    const isEditing = editableQuantities[item];
+    if (isEditing) {
+      const newQty = editedQuantities[item];
+      if (newQty !== undefined) {
+        await supabase.from("inventory").update({ quantity: newQty }).eq("item", item);
+        setInventory((prev) => ({
+          ...prev,
+          [item]: {
+            ...prev[item],
+            quantity: newQty,
+          },
+        }));
+      }
+    } else {
+      setEditedQuantities((prev) => ({
+        ...prev,
+        [item]: inventory[item].quantity
+      }));
+    }
     setEditableQuantities((prev) => ({
       ...prev,
       [item]: !prev[item],
     }));
   };
+
+  const handleClearCart = () => setCart({});
+
+  const handleRemoveItem = async (item) => {
+    if (window.confirm(`Are you sure you want to delete "${item}"?`)) {
+      const { error } = await supabase.from("inventory").delete().eq("item", item);
+      if (error) {
+        console.error("Failed to delete item:", error);
+        alert("Error deleting item. Check console.");
+        return;
+      }
+      setInventory((prev) => {
+        const newInventory = { ...prev };
+        delete newInventory[item];
+        return newInventory;
+      });
+      setCart((prev) => {
+        const newCart = { ...prev };
+        delete newCart[item];
+        return newCart;
+      });
+      setEditableQuantities((prev) => {
+        const updated = { ...prev };
+        delete updated[item];
+        return updated;
+      });
+    }
+  };
+
+  if (!inventory) return <div>Loading...</div>;
 
   return (
     <div className="p-2 space-y-4 w-screen h-screen overflow-y-auto">
@@ -121,7 +218,9 @@ export default function MerchSalesApp() {
               <div className="flex flex-col gap-1">
                 <Label>Price:</Label>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="\d*"
                   value={price}
                   onChange={(e) => handleUpdateItem(item, "price", e.target.value)}
                 />
@@ -133,7 +232,7 @@ export default function MerchSalesApp() {
                     className="border rounded px-2 py-1 w-full"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    value={quantity}
+                    value={editableQuantities[item] ? (editedQuantities[item] ?? "") : quantity}
                     disabled={!editableQuantities[item]}
                     onChange={(e) => handleUpdateItem(item, "quantity", e.target.value)}
                   />
@@ -144,17 +243,26 @@ export default function MerchSalesApp() {
               </div>
               <div className="flex flex-col gap-1">
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="Qty"
-                  min="0"
-                  max={quantity}
-                  value={cart[item] || ""}
+                  value={cart[item] !== undefined ? cart[item] : ""}
                   onChange={(e) => {
-                    const qty = parseInt(e.target.value, 10);
-                    handleAddToCart(item, qty);
+                    const val = e.target.value;
+                    if (val === "") {
+                      handleAddToCart(item, "");
+                      return;
+                    }
+                    if (/^\d+$/.test(val)) {
+                      handleAddToCart(item, parseInt(val, 10));
+                    }
                   }}
                 />
               </div>
+              <Button className="bg-red-500 text-white w-full mt-2" onClick={() => handleRemoveItem(item)}>
+                Delete Item
+              </Button>
             </CardContent>
           </Card>
         ))}
@@ -171,16 +279,30 @@ export default function MerchSalesApp() {
                 onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
               />
               <Input
-                type="number"
+                type="text"
+                inputMode="decimal"
+                pattern="\d*"
                 placeholder="Price"
                 value={newItem.price}
-                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setNewItem({ ...newItem, price: val });
+                  }
+                }}
               />
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 placeholder="Quantity"
                 value={newItem.quantity}
-                onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*$/.test(val)) {
+                    setNewItem({ ...newItem, quantity: val });
+                  }
+                }}
               />
             </div>
             <Button onClick={handleAddNewItem}>Add Item</Button>
@@ -210,7 +332,9 @@ export default function MerchSalesApp() {
               <Button onClick={handleExportCSV} disabled={salesHistory.length === 0}>
                 Export CSV
               </Button>
-              <Button onClick={handleResetInventory}>Reset Inventory</Button>
+              <Button className="bg-red-600 text-white ml-auto" onClick={handleClearSalesHistory}>
+                Clear Sales History
+              </Button>
             </div>
           </CardContent>
         </Card>
